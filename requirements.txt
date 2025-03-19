@@ -1,1 +1,11 @@
 streamlit
+Flask==2.3.3
+gunicorn==21.2.0
+numpy==1.24.4
+pandas==2.0.3
+pydub==0.25.1
+requests==2.31.0
+werkzeug==2.3.7
+requests>=2.25.0
+urllib3>=2.0.0
+Pillow>=9.0.0

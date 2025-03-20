@@ -71,14 +71,13 @@ st.markdown("""
 if 'api_keys_configured' not in st.session_state:
     st.session_state.api_keys_configured = False
 
-# Function to set API keys in environment variables from secrets.toml
-def configure_api_keys():
+# Function to check API keys in Streamlit secrets
+def check_api_keys():
     keys_set = False
     
     # Try to get from Streamlit secrets
     try:
-        if "openai" in st.secrets and "api_key" in st.secrets["api_key"]:
-            os.environ["OPENAI_API_KEY"] = st.secrets["api_key"]
+        if "OPENAI_API_KEY" in st.secrets:
             keys_set = True
             st.sidebar.success("✅ OpenAI API key configured from secrets.toml")
         else:
@@ -109,8 +108,7 @@ with st.sidebar.expander("API Configuration", expanded=not st.session_state.api_
     
     Example format:
     ```toml
-    [openai]
-    api_key = "your-openai-api-key"
+    OPENAI_API_KEY = "your-openai-api-key"
     ```
     
     The OpenAI API key is required for transcription and summarization.
@@ -118,7 +116,7 @@ with st.sidebar.expander("API Configuration", expanded=not st.session_state.api_
     
     # Check API key status
     if st.button("Check API Key Status"):
-        configure_api_keys()
+        check_api_keys()
 
 # Advanced settings
 with st.sidebar.expander("Processing Settings"):
@@ -183,7 +181,7 @@ else:
         st.session_state.uploaded_file = None
 
 # Ensure API keys are configured
-configure_api_keys()
+check_api_keys()
 
 # Process button with conditional disabling
 process_disabled = (
@@ -215,7 +213,8 @@ if st.button("Process", type="primary", disabled=process_disabled):
                     video_path=temp_file_path,
                     temp_dir=temp_dir,
                     concurrency_level=concurrency,
-                    chunk_length_sec=chunk_length
+                    chunk_length_sec=chunk_length,
+                    api_key=st.secrets["OPENAI_API_KEY"]
                 )
                 
             elif st.session_state.get('media_source') == "url" and st.session_state.get('video_url'):
@@ -225,7 +224,8 @@ if st.button("Process", type="primary", disabled=process_disabled):
                     temp_dir=temp_dir,
                     concurrency_level=concurrency,
                     chunk_length_sec=chunk_length,
-                    is_url=True
+                    is_url=True,
+                    api_key=st.secrets["OPENAI_API_KEY"]
                 )
             else:
                 st.error("No media input found. Please upload a file or provide a URL.")

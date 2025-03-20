@@ -11,6 +11,7 @@ import shutil
 from urllib.parse import urlparse
 import mimetypes
 import uuid
+from openai import OpenAI
 
 
 def download_file_from_url(url, output_path):
@@ -82,7 +83,7 @@ def get_file_type(file_path):
 
 
 def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None, 
-                                  concurrency_level=5, chunk_length_sec=60, is_url=False):
+                                  concurrency_level=5, chunk_length_sec=60, is_url=False, api_key=None):
     """
     Transcribe a video/audio file and summarize it with OpenAI GPT-4o Mini.
     Returns the summary in JSON format.
@@ -94,6 +95,7 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
     - concurrency_level: Number of concurrent transcription processes (default: 5)
     - chunk_length_sec: Length of each audio chunk in seconds (default: 60)
     - is_url: Whether the video_path is a URL (default: False)
+    - api_key: OpenAI API key passed from Streamlit secrets
     
     Returns:
     - Dictionary containing the summary in JSON format
@@ -220,6 +222,9 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
     chunks_results = []
     time_list = []
     
+    # Create OpenAI client
+    client = OpenAI(api_key=api_key)
+    
     # Helper function for chunk transcription
     def process_audio_chunk(chunk_path):
         start_time = time.time()
@@ -229,7 +234,7 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
         chunk_id = os.path.splitext(file_name)[0]
         
         # Call the transcription function
-        transcription_response = audio_to_text_single_call(chunk_path, temp_dir)
+        transcription_response = audio_to_text_single_call(chunk_path, temp_dir, client)
         
         # Extract response details
         transcript = transcription_response.get('transcript', None)
@@ -248,7 +253,7 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
         return chunk_result, elapsed_time
     
     # Helper function for transcription
-    def audio_to_text_single_call(file_path, temp_dir):
+    def audio_to_text_single_call(file_path, temp_dir, client):
         try:
             audio = AudioSegment.from_file(file_path)
             response_list = []
@@ -262,13 +267,13 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
                     chunk_path = os.path.join(temp_dir, f"{os.path.basename(file_path)}_chunk_{i}.wav")
                     chunk.export(chunk_path, format="wav")
 
-                    response_json, transcript_v1 = transcribe_with_openai_whisper(chunk_path)
+                    response_json, transcript_v1 = transcribe_with_openai_whisper(chunk_path, client)
 
                     transcript += transcript_v1 + " "
                     response_list.append(response_json)
                     os.remove(chunk_path)
             else:
-                response_json, transcript_v1 = transcribe_with_openai_whisper(file_path)
+                response_json, transcript_v1 = transcribe_with_openai_whisper(file_path, client)
 
                 response_list.append(response_json)
                 transcript = transcript_v1
@@ -279,26 +284,21 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
         except Exception as e:
             return {'error': str(e)}
 
-    def transcribe_with_openai_whisper(file_path):
-        api_url = "https://api.openai.com/v1/audio/translations"
-        
-        # Get API key from environment
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            return {'error': 'OpenAI API key not found in environment variables'}, ''
-        
-        headers = {"Authorization": f"Bearer {api_key}"}
-        data = {"model": "whisper-1", "prompt": "First figure out the language in audio file and then translate the audio into English", "response_format": "verbose_json"}
-
-        with open(file_path, "rb") as file:
-            files = {'file': (file_path, file, 'audio/wav')}
-            response = requests.post(api_url, headers=headers, data=data, files=files)
-            response_json = response.json()
-            if 'error' in response_json.keys():
-                return response_json, ''
-            else:
-                transcript = response_json['text']
-            return response_json, transcript
+    def transcribe_with_openai_whisper(file_path, client):
+        try:
+            with open(file_path, "rb") as file:
+                response = client.audio.translations.create(
+                    model="whisper-1",
+                    file=file,
+                    prompt="First figure out the language in audio file and then translate the audio into English",
+                    response_format="verbose_json"
+                )
+                
+                transcript = response.text
+                return response, transcript
+                
+        except Exception as e:
+            return {'error': str(e)}, ''
     
     # Using ThreadPoolExecutor for parallel processing
     with ThreadPoolExecutor(max_workers=concurrency_level) as executor:
@@ -342,16 +342,10 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
     hours, minutes, seconds = seconds_to_hms(total_time)
     
     try:
-        # Get API key for OpenAI
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Ensure API key is set
         if not api_key:
-            return {"error": "OpenAI API key not found in environment variables"}
-        
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-        
+            return {"error": "OpenAI API key not provided"}
+            
         # System and user prompts for the summarization with JSON output
         system_prompt = """
         You are a helpful assistant that summarizes legal call transcripts. Your job is to extract 
@@ -389,23 +383,17 @@ Here's the transcript:
 {full_transcript}
 """
         
-        # API call to OpenAI GPT-4o Mini
-        data = {
-            "model": "gpt-4o-mini",
-            "messages": [
+        # API call to OpenAI GPT-4o Mini using the client
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "temperature": 0.3  # Lower temperature for more consistent output
-        }
+            temperature=0.3  # Lower temperature for more consistent output
+        )
         
-        response = requests.post("https://api.openai.com/v1/chat/completions", 
-                              headers=headers, 
-                              data=json.dumps(data))
-        response.raise_for_status()  # Raise exception for HTTP errors
-        
-        api_result = response.json()
-        summary_text = api_result["choices"][0]["message"]["content"]
+        summary_text = response.choices[0].message.content
         
         # Parse the JSON summary
         try:

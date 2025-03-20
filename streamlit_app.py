@@ -173,7 +173,13 @@ if input_method == "Upload File":
         # Show a preview based on file type
         file_extension = uploaded_file.name.split('.')[-1].lower()
         if file_extension in ['mp4', 'mov', 'avi', 'webm', 'mkv']:
-            st.video(uploaded_file)
+            # Create a container with custom width for the video
+            video_container = st.container()
+            with video_container:
+                # Use columns to constrain the width
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    st.video(uploaded_file, start_time=0)
         elif file_extension in ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac']:
             st.audio(uploaded_file)
         
@@ -252,8 +258,12 @@ if st.button("Process", type="primary", disabled=process_disabled):
                 tab1, tab2 = st.tabs(["Summary", "Raw JSON"])
                 
                 with tab1:
-                    # Extract summary data
+                    # Extract summary data - handle potentially nested summary structure
                     summary_data = result.get("summary", {})
+                    
+                    # Handle double-nested summary if present
+                    if "summary" in summary_data:
+                        summary_data = summary_data["summary"]
                     
                     # Display key points
                     st.markdown("<h3>Key Points</h3>", unsafe_allow_html=True)
@@ -332,4 +342,4 @@ with st.expander("Supported File Formats"):
 
 # Footer
 st.markdown("---")
-st.markdown("Powered by Vakilsearch © 2024")
+st.markdown("Powered by Vakilsearch © 2025")

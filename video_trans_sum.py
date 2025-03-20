@@ -2,9 +2,6 @@ import time
 import os
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import subprocess
-from pydub import AudioSegment
-from pydub.utils import make_chunks
 import requests
 import json
 import shutil
@@ -12,6 +9,9 @@ from urllib.parse import urlparse
 import mimetypes
 import uuid
 from openai import OpenAI
+from moviepy.editor import VideoFileClip, AudioFileClip
+from pydub import AudioSegment
+from pydub.utils import make_chunks
 
 
 def download_file_from_url(url, output_path):
@@ -150,18 +150,15 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
             # Create output directory if it doesn't exist
             os.makedirs(os.path.dirname(audio_path), exist_ok=True)
             
-            # Run ffmpeg command to extract audio
-            command = [
-                'ffmpeg', '-i', video_path, 
-                '-q:a', '0', '-map', 'a', 
-                '-vn', audio_path, 
-                '-y'  # Overwrite if file exists
-            ]
+            # Use moviepy to extract audio
+            video_clip = VideoFileClip(video_path)
+            audio_clip = video_clip.audio
+            audio_clip.write_audiofile(audio_path, codec='pcm_s16le')
             
-            subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Close the clips to release resources
+            audio_clip.close()
+            video_clip.close()
             
-        except subprocess.CalledProcessError as e:
-            return {"error": f"Audio extraction failed: {e}"}
         except Exception as e:
             return {"error": f"Audio extraction failed: {e}"}
     else:
@@ -172,12 +169,9 @@ def transcribe_and_summarize_video(video_path, temp_dir="temp", provider=None,
             
             # Convert to WAV if not already in WAV format
             if not video_path.lower().endswith('.wav'):
-                command = [
-                    'ffmpeg', '-i', video_path,
-                    audio_path,
-                    '-y'  # Overwrite if file exists
-                ]
-                subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                audio_clip = AudioFileClip(video_path)
+                audio_clip.write_audiofile(audio_path, codec='pcm_s16le')
+                audio_clip.close()
             else:
                 # If already WAV but different path, make a copy
                 if video_path != audio_path:

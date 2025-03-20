@@ -7,6 +7,18 @@ from PIL import Image
 import time
 import shutil
 
+# Make sure to install required packages
+import subprocess
+import sys
+
+# Check if required packages are installed, install if necessary
+required_packages = ['openai', 'moviepy', 'pydub']
+for package in required_packages:
+    try:
+        __import__(package)
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
 # Import the transcription function directly
 from video_trans_sum import transcribe_and_summarize_video
 

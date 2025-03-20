@@ -77,8 +77,8 @@ def configure_api_keys():
     
     # Try to get from Streamlit secrets
     try:
-        if "openai" in st.secrets and "api_key" in st.secrets["openai"]:
-            os.environ["OPENAI_API_KEY"] = st.secrets["openai"]["api_key"]
+        if "openai" in st.secrets and "api_key" in st.secrets["api_key"]:
+            os.environ["OPENAI_API_KEY"] = st.secrets["api_key"]
             keys_set = True
             st.sidebar.success("✅ OpenAI API key configured from secrets.toml")
         else:
